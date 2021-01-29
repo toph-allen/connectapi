@@ -205,12 +205,13 @@ download_bundle <- function(content, filename = fs::file_temp(pattern = "bundle"
 #' @param guid optional The GUID if the content already exists on the server
 #' @param ... Additional arguments passed along to the content creation
 #' @param .pre_deploy An expression to execute before deploying the new bundle. The variables `content` and `bundle_id` are supplied
+#' @param .pre_deploy_env A list of additional variables to inject into the `.pre_deploy` environment.
 #'
 #' @return Task A task object
 #'
 #' @family deployment functions
 #' @export
-deploy <- function(connect, bundle, name = create_random_name(), title = name, guid = NULL, ..., .pre_deploy = {}) {
+deploy <- function(connect, bundle, name = create_random_name(), title = name, guid = NULL, ..., .pre_deploy = {}, .pre_deploy_env) {
   validate_R6_class(bundle, "Bundle")
   validate_R6_class(connect, "Connect")
 
@@ -223,8 +224,12 @@ deploy <- function(connect, bundle, name = create_random_name(), title = name, g
   # upload
   new_bundle_id <- con$content_upload(bundle_path = bundle$path, guid = content$guid)[["bundle_id"]]
 
+  # This allows us to pass in additional objects to our pre_deploy environment.
   pre_deploy_expr <- rlang::enexpr(.pre_deploy)
-  rlang::eval_bare(pre_deploy_expr, env = rlang::env(content = content_item(con, content$guid), bundle_id = new_bundle_id))
+  pre_deploy_env <- rlang::env(content = content_item(con, content$guid), bundle_id = new_bundle_id, !!!.pre_deploy_env)
+
+  # For some reason, `eval_bare` evaluates in this environment, but disconnected from its parent env.
+  rlang::eval_bare(pre_deploy_expr, env = pre_deploy_env)
 
   message("Deploying bundle")
   # deploy
@@ -368,12 +373,12 @@ set_image_webshot <- function(content, ...) {
   validate_R6_class(content, "Content")
   imgfile <- fs::file_temp(pattern = "image", ext = ".png")
   webshot::webshot(content$get_content()$url,
-    file = imgfile,
-    vwidth = 800,
-    vheight = 600,
-    cliprect = "viewport",
-    key = content$get_connect()$api_key,
-    ...
+                   file = imgfile,
+                   vwidth = 800,
+                   vheight = 600,
+                   cliprect = "viewport",
+                   key = content$get_connect()$api_key,
+                   ...
   )
 
   set_image_path(content = content, path = imgfile)
